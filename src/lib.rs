@@ -1,9 +1,10 @@
+#[cfg(feature = "builder")]
 pub mod builder;
-pub mod oneshot;
+#[cfg(feature = "futures")]
 pub mod future;
 pub(crate) mod tryable;
 
+mod oneshot;
 pub mod prelude {
-    // pub use crate::builder::*;
     pub use crate::oneshot::*;
 }
