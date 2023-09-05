@@ -6,12 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-futures = { version = "0.3.28", optional = true }
 pin-project = { version = "1.1.3", optional = true }
 
 [features]
+default = ["futures"]
 builder = []
-futures = ["dep:futures", "dep:pin-project"]
+futures = ["dep:pin-project"]
 
 [dev-dependencies]
 tokio = { version = "1.32.0", features = ["full"] }

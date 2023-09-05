@@ -1,38 +1,23 @@
-//! Title: Repeater
-//!
-//! How to use:
-//! ```rust
-//! use retry::future::*;
-//! pub async fn myfunc() {
-//!     println!("Hello, world!");
-//!     // Other stuff
-//! }
-//! myfunc.repeat::<3>().await;
-//! ```
-
 use core::future::Future;
-use core::pin::{pin, Pin};
+use core::pin::Pin;
 use core::task::Poll;
 
-#[pin_project::pin_project]
-#[non_exhaustive]
-pub struct Repeater<F, Args, Fut> {
-    f: F,
-    #[pin]
-    state: RepeaterStates<Fut>,
-    repeat: usize,
-    args: Args,
-}
-
-// impl<F, Fut: Unpin> Unpin for Repeater<F, Fut> {}
-
-#[pin_project::pin_project(project = RepeaterState)]
-pub enum RepeaterStates<F> {
+#[pin_project::pin_project(project = RetryStates)]
+pub enum RetryState<F> {
     Pending,
     Ready(#[pin] F),
 }
 
-impl<F, Fut, Out> Future for Repeater<F, (), Fut>
+#[pin_project::pin_project]
+pub struct Retrier<F, Args, Fut> {
+    retry: usize,
+    f: F,
+    #[pin]
+    state: RetryState<Fut>,
+    args: Args,
+}
+
+impl<F, Fut, Out> Future for Retrier<F, (), Fut>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Out>,
@@ -40,17 +25,17 @@ where
     type Output = Out;
     fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
-        let mut tries = *this.repeat;
+        let mut tries = *this.retry;
         match this.state.as_mut().project() {
-            RepeaterState::Pending => {
+            RetryStates::Pending => {
                 // Create the future from the function
                 let fut = (this.f)();
-                this.state.set(RepeaterStates::Ready(fut));
+                this.state.set(RetryState::Ready(fut));
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
 
-            RepeaterState::Ready(ref mut fut) => {
+            RetryStates::Ready(ref mut fut) => {
                 match Pin::new(fut).poll(cx) {
                     // If it's already ready then decrement the repeat counter for 1
                     Poll::Ready(v) => {
@@ -60,8 +45,8 @@ where
                         } else {
                             // So we need to retry more so create a new future
                             let fut = (this.f)();
-                            this.state.set(RepeaterStates::Ready(fut));
-                            *this.repeat = tries;
+                            this.state.set(RetryState::Ready(fut));
+                            *this.retry = tries;
                             cx.waker().wake_by_ref();
                             Poll::Pending
                         }
@@ -76,34 +61,34 @@ where
     }
 }
 
-pub trait AsyncRepeat0<Fut>: Sized {
-    fn repeat<const N: usize>(self) -> Repeater<Self, (), Fut>;
+pub trait AsyncRetry0<Fut>: Sized {
+    fn retry<const N: usize>(self) -> Retrier<Self, (), Fut>;
 }
 
-impl<F, Fut, Out> AsyncRepeat0<Fut> for F
+impl<F, Fut, Out> AsyncRetry0<Fut> for F
 where
-    F: FnMut() -> Fut,
+    F: FnMut() -> Out,
     Fut: Future<Output = Out>,
 {
-    fn repeat<const N: usize>(self) -> Repeater<Self, (), Fut> {
-        Repeater {
+    fn retry<const N: usize>(self) -> Retrier<Self, (), Fut> {
+        Retrier {
+            retry: N,
             f: self,
-            state: RepeaterStates::Pending,
-            repeat: N,
+            state: RetryState::Pending,
             args: (),
         }
     }
 }
 
-macro_rules! impl_gen_async_repeat {
-    ($name:ident, $($item: ident),*) => {
+macro_rules! impl_gen_async_retry {
+    ($name: ident, $($item: ident),*) => {
         #[allow(non_snake_case, clippy::too_many_arguments)]
         pub trait $name<Fut, $($item),*>: Sized {
-            fn repeat<const N: usize>(self, $($item: $item),*) -> Repeater<Self, ($($item),*,), Fut> {
-                Repeater {
+            fn retry<const N: usize>(self, $($item: $item),*) -> Retrier<Self, ($($item),*,), Fut> {
+                Retrier {
+                    retry: N,
                     f: self,
-                    state: RepeaterStates::Pending,
-                    repeat: N,
+                    state: RetryState::Pending,
                     args: ($($item),*,),
                 }
             }
@@ -117,7 +102,7 @@ macro_rules! impl_gen_async_repeat {
         { }
 
         #[allow(non_snake_case)]
-        impl<F, Fut, Out, $($item: Clone),*> Future for Repeater<F, ($($item),*,), Fut>
+        impl<F, Fut, Out, $($item: Clone),*> Future for Retrier<F, ($($item),*,), Fut>
             where
                 F: FnMut($($item),*) -> Fut,
                 Fut: Future<Output = Out>,
@@ -125,18 +110,18 @@ macro_rules! impl_gen_async_repeat {
             type Output = Out;
             fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
                 let mut this = self.project();
-                let mut tries = *this.repeat;
+                let mut tries = *this.retry;
                 match this.state.as_mut().project() {
-                    RepeaterState::Pending => {
+                    RetryStates::Pending => {
                         // Create the future from the function
                         let ( $($item),*, ) = this.args.clone();
                         let fut = (this.f)($($item),*,);
-                        this.state.set(RepeaterStates::Ready(fut));
+                        this.state.set(RetryState::Ready(fut));
                         cx.waker().wake_by_ref();
                         Poll::Pending
                     }
 
-                    RepeaterState::Ready(ref mut fut) => {
+                    RetryStates::Ready(ref mut fut) => {
                         match Pin::new(fut).poll(cx) {
                             // If it's already ready then decrement the repeat counter for 1
                             Poll::Ready(v) => {
@@ -146,8 +131,8 @@ macro_rules! impl_gen_async_repeat {
                                 } else {
                                     let ( $($item),*, ) = this.args.clone();
                                     let fut = (this.f)($($item),*,);
-                                    this.state.set(RepeaterStates::Ready(fut));
-                                    *this.repeat = tries;
+                                    this.state.set(RetryState::Ready(fut));
+                                    *this.retry = tries;
                                     cx.waker().wake_by_ref();
                                     Poll::Pending
                                 }
@@ -162,16 +147,17 @@ macro_rules! impl_gen_async_repeat {
             }
 
          }
-    };
+
+    }
 }
 
-impl_gen_async_repeat!(AsyncRepeat1, A1);
-impl_gen_async_repeat!(AsyncRepeat2, A1, A2);
-impl_gen_async_repeat!(AsyncRepeat3, A1, A2, A3);
-impl_gen_async_repeat!(AsyncRepeat4, A1, A2, A3, A4);
-impl_gen_async_repeat!(AsyncRepeat5, A1, A2, A3, A4, A5);
-impl_gen_async_repeat!(AsyncRepeat6, A1, A2, A3, A4, A5, A6);
-impl_gen_async_repeat!(AsyncRepeat7, A1, A2, A3, A4, A5, A6, A7);
-impl_gen_async_repeat!(AsyncRepeat8, A1, A2, A3, A4, A5, A6, A7, A8);
-impl_gen_async_repeat!(AsyncRepeat9, A1, A2, A3, A4, A5, A6, A7, A8, A9);
-impl_gen_async_repeat!(AsyncRepeat10, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10);
+impl_gen_async_retry!(AsyncRetry1, A1);
+impl_gen_async_retry!(AsyncRetry2, A1, A2);
+impl_gen_async_retry!(AsyncRetry3, A1, A2, A3);
+impl_gen_async_retry!(AsyncRetry4, A1, A2, A3, A4);
+impl_gen_async_retry!(AsyncRetry5, A1, A2, A3, A4, A5);
+impl_gen_async_retry!(AsyncRetry6, A1, A2, A3, A4, A5, A6);
+impl_gen_async_retry!(AsyncRetry7, A1, A2, A3, A4, A5, A6, A7);
+impl_gen_async_retry!(AsyncRetry8, A1, A2, A3, A4, A5, A6, A7, A8);
+impl_gen_async_retry!(AsyncRetry9, A1, A2, A3, A4, A5, A6, A7, A8, A9);
+impl_gen_async_retry!(AsyncRetry10, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10);
