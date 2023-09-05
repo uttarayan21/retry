@@ -19,7 +19,16 @@ pub async fn main() -> Result<()> {
     })
     .repeat::<3>();
 
-    my_fun.repeat(3).await;
+    my_fun.repeat::<3>().await?;
+
+    let async_closure = || async {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("Hello, world!");
+    };
+    async_closure.repeat::<3>().await;
+
+    sleeper.repeat::<3>(3).await?;
+
     Ok(())
 }
 
@@ -36,7 +45,13 @@ pub fn hello() {
 }
 
 pub async fn my_fun() -> Result<()> {
-    // let cargo = std::fs::read_to_string("Cargo.toml")?;
-    // println!("{}", cargo);
+    println!("Sleepy time");
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     Ok(())
+}
+
+pub async fn sleeper(sleep: u64) -> Result<u64> {
+    println!("Sleepy time for {sleep}");
+    tokio::time::sleep(std::time::Duration::from_secs(sleep)).await;
+    Ok(sleep)
 }
