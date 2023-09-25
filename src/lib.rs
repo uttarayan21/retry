@@ -1,3 +1,7 @@
+//! ## Retry
+//!
+//! Retry any sync / async function with 
+
 #[cfg(feature = "builder")]
 pub mod builder;
 #[cfg(feature = "futures")]

@@ -11,17 +11,27 @@
 //! ```
 
 use core::future::Future;
-use core::pin::{pin, Pin};
+use core::pin::Pin;
 use core::task::Poll;
 
 #[pin_project::pin_project]
 #[non_exhaustive]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Repeater<F, Args, Fut> {
     f: F,
     #[pin]
     state: RepeaterStates<Fut>,
     repeat: usize,
     args: Args,
+}
+
+impl<F, Args: core::fmt::Debug, Fut> core::fmt::Debug for Repeater<F, Args, Fut> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Repeater")
+            .field("args", &self.args)
+            .field("repeat", &self.repeat)
+            .finish()
+    }
 }
 
 // impl<F, Fut: Unpin> Unpin for Repeater<F, Fut> {}
@@ -34,7 +44,7 @@ pub enum RepeaterStates<F> {
 
 impl<F, Fut, Out> Future for Repeater<F, (), Fut>
 where
-    F: FnMut() -> Fut,
+    F: Fn() -> Fut,
     Fut: Future<Output = Out>,
 {
     type Output = Out;
@@ -82,7 +92,7 @@ pub trait AsyncRepeat0<Fut>: Sized {
 
 impl<F, Fut, Out> AsyncRepeat0<Fut> for F
 where
-    F: FnMut() -> Fut,
+    F: Fn() -> Fut,
     Fut: Future<Output = Out>,
 {
     fn repeat<const N: usize>(self) -> Repeater<Self, (), Fut> {
@@ -112,14 +122,14 @@ macro_rules! impl_gen_async_repeat {
         #[allow(non_snake_case)]
         impl<F, Fut, Out, $($item),*> $name<Fut, $($item),*> for F
         where
-            F: FnMut($($item),*) -> Fut,
+            F: Fn($($item),*) -> Fut,
             Fut: Future<Output = Out>,
         { }
 
         #[allow(non_snake_case)]
         impl<F, Fut, Out, $($item: Clone),*> Future for Repeater<F, ($($item),*,), Fut>
             where
-                F: FnMut($($item),*) -> Fut,
+                F: Fn($($item),*) -> Fut,
                 Fut: Future<Output = Out>,
         {
             type Output = Out;

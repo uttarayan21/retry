@@ -19,7 +19,7 @@ pub struct Retrier<F, Args, Fut> {
 
 impl<F, Fut, Out> Future for Retrier<F, (), Fut>
 where
-    F: FnMut() -> Fut,
+    F: Fn() -> Fut,
     Fut: Future<Output = Out>,
 {
     type Output = Out;
@@ -67,7 +67,7 @@ pub trait AsyncRetry0<Fut>: Sized {
 
 impl<F, Fut, Out> AsyncRetry0<Fut> for F
 where
-    F: FnMut() -> Out,
+    F: Fn() -> Out,
     Fut: Future<Output = Out>,
 {
     fn retry<const N: usize>(self) -> Retrier<Self, (), Fut> {
@@ -97,14 +97,14 @@ macro_rules! impl_gen_async_retry {
         #[allow(non_snake_case)]
         impl<F, Fut, Out, $($item),*> $name<Fut, $($item),*> for F
         where
-            F: FnMut($($item),*) -> Fut,
+            F: Fn($($item),*) -> Fut,
             Fut: Future<Output = Out>,
         { }
 
         #[allow(non_snake_case)]
         impl<F, Fut, Out, $($item: Clone),*> Future for Retrier<F, ($($item),*,), Fut>
             where
-                F: FnMut($($item),*) -> Fut,
+                F: Fn($($item),*) -> Fut,
                 Fut: Future<Output = Out>,
         {
             type Output = Out;

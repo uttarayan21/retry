@@ -19,15 +19,20 @@ pub async fn main() -> Result<()> {
     })
     .repeat::<3>();
 
-    my_fun.repeat::<3>().await?;
-
     let async_closure = || async {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         println!("Hello, world!");
     };
-    async_closure.repeat::<3>().await;
+    // async_closure.repeat::<3>().await;
+    // sleeper.repeat::<3>(3).await?;
+    // my_fun.repeat::<3>().await?;
 
-    sleeper.repeat::<3>(3).await?;
+    let mut val = 5;
+    let trial = || async move {
+        val += 1;
+        println!("{val}")
+    };
+    trial.repeat::<3>().await;
 
     Ok(())
 }
