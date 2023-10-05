@@ -1,4 +1,4 @@
-pub trait Tryable {
+pub trait Tryable: seal::Sealed {
     type Ok;
     type Error;
     fn negative(&self) -> bool;
@@ -18,4 +18,10 @@ impl<T> Tryable for Option<T> {
     fn negative(&self) -> bool {
         self.is_none()
     }
+}
+
+mod seal {
+    pub trait Sealed {}
+    impl<T> Sealed for Option<T> {}
+    impl<T, E> Sealed for Result<T, E> {}
 }
